@@ -24,5 +24,5 @@ Gem::Specification.new do |s|
                            --inline-source ]
 
   s.add_dependency "rails", ">= 3.1"
-  s.add_dependency "jquery-rails", "~> 2.0.2"
+  s.add_dependency "jquery-rails", ">= 2.0.2"
 end
