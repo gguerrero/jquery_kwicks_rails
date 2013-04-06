@@ -1,5 +1,5 @@
 # Kwicks for RubyOnRails
-A *Rails* plugin for having 'Sexy Sliding Panels' on your application. 
+A *Rails* plugin for having <b>Sexy Sliding Panels</b> on your application. 
 
 ## Installation
 You can install this *gem* by
@@ -10,14 +10,21 @@ Or bundle it on your app by adding this line at your *Gemfile*
 
     gem "jquery_kwicks_rails"
 
+
 ## Get Started
-Add this line to your *app/assets/javascripts/application.js* file
+Add this to your *app/assets/javascripts/application.js* file
 
-    //= require jquery.kwicks
+    //= require kwicks
 
-...
+And this to your *app/assets/stylesheets/application.css* file
 
-## The *Easing* Project
+    *= require kwicks
+
+You're ready. All the *Kwicks* *JQuery* methods are available now.
+See [here](http://devsmash.com/projects/kwicks/examples/horizontal) some usage examples.
+
+
+## The *Easing* Plugin
 Go to [JQuery Easing site](http://gsgd.co.uk/sandbox/jquery/easing/) for more info about easing plugin.
 
 ## The *Kwicks* Project
