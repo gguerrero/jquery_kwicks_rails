@@ -29,7 +29,7 @@ And this to your *app/assets/stylesheets/application.css* file
 ```
 
 You're ready. All the *Kwicks* *JQuery* methods are available now.
-See [here](http://devsmash.com/projects/kwicks/examples/horizontal) some usage examples.
+See [here](http://devsmash.com/projects/kwicks) some usage examples.
 
 ## View Helpers
 This *gem* adds some view helpers to your app so you can create the HTML that kwicks 
