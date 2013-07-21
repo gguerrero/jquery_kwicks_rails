@@ -147,7 +147,6 @@ $(document).ready ->
     spacing: 5
     isVertical: true
 $(".kwicks-columns").kwicks
-  $(@columnsUl).kwicks
     maxSize: 600
     behavior: 'menu'
     spacing: 5
