@@ -1,8 +1,9 @@
 /*!
- *  Kwicks: Sexy Sliding Panels for jQuery - v2.0.0
+ *  Kwicks: Sexy Sliding Panels for jQuery - v2.1.0
  *  http://devsmash.com/projects/kwicks
  *
- *  Copyright 2012 Jeremy Martin (jmar777)
+ *  Copyright 2013 Jeremy Martin (jmar777)
+ *  Contributors: Duke Speer (Duke3D), Guillermo Guerrero (gguerrero)
  *  Released under the MIT license
  *  http://www.opensource.org/licenses/mit-license.php
  */
@@ -14,22 +15,46 @@
 	 */
 	var methods = {
 		init: function(opts) {
-			var o = $.extend({ duration: 500, spacing: 5 }, opts);
+			var defaults = {
+				maxSize: -1,
+				minSize: -1,
+				spacing: 5,
+				duration: 500,
+				isVertical: false,
+				easing: undefined,
+				behavior: null,
+				autoResize: true,
+				showSpeed: undefined
+			};
+			var o = $.extend(defaults, opts);
 
-			// validate options
-			if (typeof o.size === 'undefined')
-				throw new Error('Kwicks option "size" is required');
-			if (typeof o.minSize === 'undefined' && typeof o.maxSize === 'undefined')
-				throw new Error('One of Kwicks options "minSize" or "maxSize" is required');
-			if (typeof o.minSize !== 'undefined' && typeof o.maxSize !== 'undefined')
-				throw new Error('Kwicks options "minSize" and "maxSize" may not both be set');
-			if (o.minSize > o.size)
-				throw new Error('Kwicks option "minSize" may not be greater than "size"');
-			if (o.maxSize < o.size)
-				throw new Error('Kwicks option "maxSize" may not be less than "size"');
-			if (o.behavior && o.behavior !== 'menu')
+			// validate and normalize options
+			if (o.minSize !== -1 && o.maxSize !== -1)
+				throw new Error('Kwicks options minSize and maxSize may not both be set');
+			if (o.behavior && o.behavior !== 'menu' && o.behavior !== 'slideshow')
 				throw new Error('Unrecognized Kwicks behavior specified: ' + o.behavior);
-			
+			$.each(['minSize', 'maxSize'], function(i, prop) {
+				var val = o[prop];
+				switch (typeof val) {
+					case 'number':
+						o[prop + 'Units'] = 'px';
+						break;
+					case 'string':
+						if (val.slice(-1) === '%') {
+							o[prop + 'Units'] = '%';
+							o[prop] = +val.slice(0, -1) / 100;
+						} else if (val.slice(-2) === 'px') {
+							o[prop + 'Units'] = 'px';
+							o[prop] = +val.slice(0, -2);	
+						} else {
+							throw new Error('Invalid value for Kwicks option ' + prop + ': ' + val);
+						}
+						break;
+					default:
+						throw new Error('Invalid value for Kwicks option ' + prop + ': ' + val);
+				}
+			});
+						
 			return this.each(function() {
 				$(this).data('kwicks', new Kwick(this, o));
 			});
@@ -99,6 +124,18 @@
 			var kwick = this.first().data('kwicks');
 			if (!kwick) throw new Error('Cannot called "selected" method on a non-Kwicks element');
 			return kwick.selectedIndex;
+		},
+		resize: function(index) {
+			return this.each(function() {
+				var $this = $(this),
+					kwick = $this.data('kwicks');
+
+				if (!kwick) {
+					throw new Error('Cannot called "resize" method on a non-Kwicks element');
+				}
+
+				kwick.resize();			
+			});
 		}
 	};
 
@@ -115,7 +152,6 @@
 		}
 	};
 
-	
 	/**
 	 *  Special event for triggering default behavior on 'expand.kwicks' events
 	 */
@@ -155,14 +191,6 @@
 		this.$container = $(container).addClass('kwicks').addClass('kwicks-' + orientation);
 		this.$panels = this.$container.children();
 
-		// calculate minSize from maxSize or vice versa
-		var numPanels = this.$panels.length;
-		if (typeof opts.minSize === 'undefined') {
-			opts.minSize = ((opts.size * numPanels) - opts.maxSize) / (numPanels - 1);
-		} else {
-			opts.maxSize = (opts.size * numPanels) - (opts.minSize * (numPanels - 1));
-		}
-
 		// zero-based, -1 for "none"
 		this.selectedIndex = this.$panels.filter('.kwicks-selected').index();
 		this.expandedIndex = this.selectedIndex;
@@ -171,9 +199,12 @@
 		this.primaryDimension = opts.isVertical ? 'height' : 'width';
 		this.secondaryDimension = opts.isVertical ? 'width' : 'height';
 
+		// initialize panel sizes
+		this.calculatePanelSizes();
+
 		// likewise, we have primary and secondary alignments (all panels but the last use primary,
 		// which uses the secondary alignment). this is to allow the first and last panels to have
-		// fixed (0) offsets. this reduces jittering, which is much more noticeable on the ends.
+		// fixed offsets. this reduces jittering, which is much more noticeable on the last item.
 		this.primaryAlignment = opts.isVertical ? 'top' : 'left';
 		this.secondaryAlignment = opts.isVertical ? 'bottom' : 'right';
 
@@ -185,6 +216,52 @@
 
 		this.initStyles();
 		this.initBehavior();
+		this.initWindowResizeHandler();
+		this.initSlideShow();
+	};
+
+	/**
+	 * Calculates size, minSize, and maxSize based on the current size of the container and the
+	 * user-provided options.  The results will be stored on this.panelSize, this.panelMinSize, and
+	 * this.panelMaxSize.  This should be run on initialization and whenever the container's
+	 * primary dimension may have changed in size.
+	 */
+	Kwick.prototype.calculatePanelSizes = function() {
+		var opts = this.opts,
+			numPanels = this.$panels.length,
+			containerSize = this.getContainerSize(true),
+			sumSpacing = opts.spacing * (numPanels - 1),
+			sumPanelSize = containerSize - sumSpacing;
+
+		this.panelSize = sumPanelSize / numPanels;
+
+		if (opts.minSize === -1) {
+			if (opts.maxSize === -1) {
+				// if neither minSize or maxSize or set, then we try to pick a sensible default
+				if (numPanels < 5) {
+					this.panelMaxSize = containerSize / 3 * 2;
+				} else {
+					this.panelMaxSize = containerSize / 3;
+				}
+			} else if (opts.maxSizeUnits === '%') {
+				this.panelMaxSize = sumPanelSize * opts.maxSize;
+			} else {
+				this.panelMaxSize = opts.maxSize;
+			}
+
+			// at this point we know that this.panelMaxSize is set
+			this.panelMinSize = (sumPanelSize - this.panelMaxSize) / (numPanels - 1);
+		} else if (opts.maxSize === -1) {
+			// at this point we know that opts.minSize is set
+			if (opts.minSizeUnits === '%') {
+				this.panelMinSize = sumPanelSize * opts.minSize;
+			} else {
+				this.panelMinSize = opts.minSize;
+			}
+
+			// at this point we know that this.panelMinSize is set
+			this.panelMaxSize = sumPanelSize - (this.panelMinSize * (numPanels - 1));
+		}
 	};
 
 	/**
@@ -195,9 +272,9 @@
 		var expandedIndex = this.expandedIndex,
 			numPanels = this.$panels.length,
 			spacing = this.opts.spacing,
-			size = this.opts.size,
-			minSize = this.opts.minSize,
-			maxSize = this.opts.maxSize;
+			size = this.panelSize,
+			minSize = this.panelMinSize,
+			maxSize = this.panelMaxSize;
 
 		//first panel is always offset by 0
 		var offsets = [0];
@@ -243,16 +320,11 @@
 			pDim = this.primaryDimension,
 			pAlign = this.primaryAlignment,
 			sAlign = this.secondaryAlignment,
-			spacing = this.opts.spacing;
-
-		// grab and cache the the size or our container's primary dimension
-		var containerSize = this._containerSize;
-		if (!containerSize) {
-			containerSize = this._containerSize = this.$container.css(pDim).replace('px', '');
-		}
+			spacing = this.opts.spacing,
+			containerSize = this.getContainerSize();
 
 		// the kwicks-processed class ensures that panels are absolutely positioned, but on our
-		// first pass we need to set offsets, width, and positioning atomically to prevent
+		// first pass we need to set offsets, width|length, and positioning atomically to prevent
 		// mid-update repaints
 		var stylePrefix = !!this._stylesInited ? '' : 'position:absolute;',
 			offset, size, prevOffset, style;
@@ -290,11 +362,6 @@
 			pDim = this.primaryDimension,
 			sDim = this.secondaryDimension;
 
-		// the primary side is the sum of all panels and their spacing
-		$container.css(pDim, (opts.size * numPanels) + (opts.spacing * (numPanels - 1)));
-		// the secondary side is the same as the child panel elements (assume they're all equal)
-		$container.css(sDim, $panels.eq(0).css(sDim));	
-
 		this.updatePanelStyles();
 	};
 
@@ -316,9 +383,79 @@
 					$(this).kwicks('select');
 				});
 				break;
+			case 'slideshow':
+				this.$panels.click(function(){
+					$(this).kwicks('select');
+				});
+				break;
 			default:
 				throw new Error('Unrecognized behavior option: ' + this.opts.behavior);
 		}
+	};
+
+	/**
+	 * Sets up a throttled window resize handler that triggers resize logic for the panels
+	 * todo: hideous code, needs refactor for the eye bleeds
+	 */
+	Kwick.prototype.initWindowResizeHandler = function() {
+		if (!this.opts.autoResize) return;
+
+		var self = this,
+			prevTime = 0,
+			execScheduled = false;
+
+		var onResize = function(e) {
+			// if there's no event, then this is a scheduled from our setTimeout
+			if (!e) { execScheduled = false; }
+
+			// if we've already run in the last 20ms, then delay execution
+			var now = +new Date();
+			if (now - prevTime < 20) {
+				// if we already scheduled a run, don't do it again
+				if (execScheduled) return;
+				setTimeout(onResize, 20 - (now - prevTime));
+				execScheduled = true;
+				return;
+			}
+
+			// throttle rate is satisfied, go ahead and run
+			prevTime = now;
+			self.resize();			
+		}
+		$(window).on('resize', onResize);
+	};
+
+	/**
+	 * Initialize Slide Show behavior
+	 */
+	Kwick.prototype.initSlideShow = function() {
+		if (!this.opts.showSpeed || this.opts.behavior !== "slideshow") return;
+		if (isNaN(this.opts.showSpeed)) {
+			throw new Error('Invalid slideShow option (not a number): ' + this.opts.slideShow);
+		}
+
+		var self = this,
+			speed = parseInt(this.opts.showSpeed)*1000,
+			numSlides = this.$panels.length,
+			curSlide = 0;
+
+		clearInterval(this.slideShowInterval);
+		this.slideShowInterval = setInterval(function(){
+			self.expand(curSlide++ % numSlides);
+		},speed);
+	};
+
+	/**
+	 * Returns the size in pixels of the container's primary dimension. This value is cached as it
+	 * is used repeatedly during animation loops, but the cache can be cleared by passing `true`.
+	 * todo: benchmark to see if this caching business is even at all necessary.
+	 */
+	Kwick.prototype.getContainerSize = function(clearCache) {
+		var containerSize = this._containerSize;
+		if (clearCache || !containerSize) {
+			containerSize = this._containerSize = this.$container[this.primaryDimension]();
+		}
+		return containerSize;
 	};
 
 	/**
@@ -329,10 +466,37 @@
 	};
 
 	/**
+	 *  Gets a reference to the currently collapsed panels (if there is any)
+	 */
+	Kwick.prototype.getCollapsedPanels = function() {
+		return this.expandedIndex === -1 ? $([]) : this.$panels.not(this.getExpandedPanel());
+	};
+
+	/**
 	 *  Gets a reference to the currently selected panel (if there is one)
 	 */
 	Kwick.prototype.getSelectedPanel = function() {
 		return this.selectedIndex === -1 ? $([]) : this.$panels.eq(this.selectedIndex);
+	};
+
+	/**
+	 *  Forces the panels to be updated in response to the container being resized.
+	 */
+	Kwick.prototype.resize = function(index) {
+		// bail out if container size hasn't changed
+		if (this.getContainerSize() === this.getContainerSize(true)) return;
+
+		this.calculatePanelSizes();
+		this.offsets = this.getOffsetsForExpanded();
+
+		// if the panels are currently being animated, we'll just set a flag that can be detected
+		// during the next animation step
+		if (this.isAnimated) {
+			this._dirtyOffsets = true;
+		} else {
+			// otherwise update the styles immediately
+			this.updatePanelStyles();
+		}
 	};
 
 	/**
@@ -366,8 +530,10 @@
 		if (index === this.expandedIndex) return;
 
 		this.getExpandedPanel().removeClass('kwicks-expanded');
+		this.getCollapsedPanels().removeClass('kwicks-collapsed');
 		this.expandedIndex = index;
 		this.getExpandedPanel().addClass('kwicks-expanded');
+		this.getCollapsedPanels().addClass('kwicks-collapsed');
 
 		// handle panel animation
 		var $timer = this.$timer,
@@ -377,10 +543,16 @@
 			targetOffsets = this.getOffsetsForExpanded();
 
 		$timer.stop()[0].progress = 0;
+		this.isAnimated = true;
 		$timer.animate({ progress: 1 }, {
 			duration: this.opts.duration,
 			easing: this.opts.easing,
 			step: function(progress) {
+				if (self._dirtyOffsets) {
+					offsets = self.offsets;
+					targetOffsets = self.getOffsetsForExpanded();
+					self._dirtyOffsets = false;
+				}
 				offsets.length = 0;
 				for (var i = 0; i < numPanels; i++) {
 					var targetOffset = targetOffsets[i],
@@ -388,6 +560,9 @@
 					offsets[i] = newOffset;
 				}
 				self.updatePanelStyles();
+			},
+			complete:  function() {
+				self.isAnimated = false;
 			}
 		});
 	};
