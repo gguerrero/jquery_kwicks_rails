@@ -24,11 +24,10 @@ You're ready. All the *Kwicks* *JQuery* methods are available now.
 See [here](http://devsmash.com/projects/kwicks/examples/horizontal) some usage examples.
 
 ## View Helpers
-This *gem* adds some view helpers to your app so you can create a the HTML that kwicks expect with easy.
+This *gem* adds some view helpers to your app so you can create the HTML that kwicks 
+expect with easy.
 
-For example, create a basic *kwicks* with three horizontal panels:
-
-**kwicks_horizontal_example.html.erb**
+### Horizontal panels
 
     <%= kwicks do %>
       <%= kwicks_panel %>
@@ -36,9 +35,8 @@ For example, create a basic *kwicks* with three horizontal panels:
       <%= kwicks_panel %>
     <% end %>
 
-Add some images at the kwicks panel elements:
 
-**kwicks_content_example.html.erb**
+### Horizontal panels with some content.
 
     <%= kwicks do %>
       <%= kwicks_panel do %>
@@ -52,9 +50,8 @@ Add some images at the kwicks panel elements:
       <% end %>
     <% end %>
 
-Creating a vertical kwicks:
 
-**kwicks_vertical_example.html.erb**
+### Vertical panels
 
     <%= kwicks(orientation: 'vertical') do %>
       <%= kwicks_panel %>
@@ -64,17 +61,14 @@ Creating a vertical kwicks:
 
 Or
 
-**kwicks_vertical_example.html.erb**
-
     <%= kwicks_vertical do %>
       <%= kwicks_panel %>
       <%= kwicks_panel %>
       <%= kwicks_panel %>
     <% end %>
 
-Make multidimensional kwicks:
 
-**kwicks_multidimensional_example.html.erb**
+### Multidimensional kwicks!
 
     <%= kwicks(id: "the_kwicks", class: "kwicks-rows", orientation: "vertical") do %>
       <%= kwicks_panel do %>
@@ -93,37 +87,51 @@ Make multidimensional kwicks:
       <% end %>
     <% end %>
 
-The styling for this multidimensional kwicks should look like:
+Where *styling* should look like:
 
-    .kwicks-rows {
-      width: 910px;
-      height: 555px;
+.kwicks-rows {
+  width: 910px;
+  height: 555px;
 
-      li {
-        width: 100%;
+  .kwicks-panel {
+    width: 100%;
 
-        /* overridden by kwicks but good for when JavaScript is disabled */
-        height: 275px;
-        margin-top: 5px;
-      }
-    }
+    /* overridden by kwicks but good for when JavaScript is disabled */
+    height: 275px;
+    margin-top: 5px;
+  }
+}
 
-    .kwicks-columns {
-      width: 100%;
-      height: 100%;
+.kwicks-columns {
+  width: 100%;
+  height: 100%;
 
-      li {
-        height: 100%;
+  .kwicks-panel {
+    height: 100%;
 
-        /* overridden by kwicks but good for when JavaScript is disabled */
-        width: 300px;
-        margin-left: 5px;
-        float: left;
+    /* overridden by kwicks but good for when JavaScript is disabled */
+    width: 300px;
+    margin-left: 5px;
+    float: left;
 
-        background-color: #141414;
-        opacity: 0.95; 
-      }
-    }
+    background-color: #23a543;
+  }
+}
+
+And the *CoffeeScript* should look like:
+
+    $(document).ready ->
+      $(".kwicks-rows").kwicks
+        maxSize: 400
+        behavior: 'menu'
+        spacing: 5
+        isVertical: true
+    $(".kwicks-columns").kwicks
+      $(@columnsUl).kwicks
+        maxSize: 600
+        behavior: 'menu'
+        spacing: 5
+
 
 
 ## The *Easing* Plugin
