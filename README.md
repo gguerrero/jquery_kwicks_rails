@@ -106,7 +106,7 @@ Or
 
 Where *styling* should look like:
 
-```sass
+```scss
 .kwicks-rows {
   width: 910px;
   height: 555px;
