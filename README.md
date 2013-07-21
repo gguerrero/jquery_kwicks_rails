@@ -4,7 +4,7 @@ A *Rails* plugin for having <b>Sexy Sliding Panels</b> on your application.
 ## Installation
 You can install this *gem* by
 
-```shell
+```
 $ gem install jquery_kwicks_rails
 ```
 
@@ -18,13 +18,13 @@ gem "jquery_kwicks_rails"
 ## Get Started
 Add this to your *app/assets/javascripts/application.js* file
 
-```javascript
+```
 //= require kwicks
 ```
 
 And this to your *app/assets/stylesheets/application.css* file
 
-```css
+```
 *= require kwicks
 ```
 
