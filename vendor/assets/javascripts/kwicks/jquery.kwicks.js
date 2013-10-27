@@ -1,5 +1,5 @@
 /*!
- *  Kwicks: Sexy Sliding Panels for jQuery - v2.1.0
+ *  Kwicks: Sexy Sliding Panels for jQuery - v2.2.0
  *  http://devsmash.com/projects/kwicks
  *
  *  Copyright 2013 Jeremy Martin (jmar777)
@@ -16,15 +16,23 @@
 	var methods = {
 		init: function(opts) {
 			var defaults = {
+				// general options:
 				maxSize: -1,
 				minSize: -1,
 				spacing: 5,
 				duration: 500,
 				isVertical: false,
 				easing: undefined,
-				behavior: null,
 				autoResize: true,
-				showSpeed: undefined
+				behavior: null,
+				// menu behavior options:
+				delayMouseIn: 0,
+				delayMouseOut: 0,
+				selectOnClick: true,
+				deselectOnClick: false,
+				// slideshow behavior options:
+				interval: 2500,
+				interactive: true
 			};
 			var o = $.extend(defaults, opts);
 
@@ -33,7 +41,7 @@
 				throw new Error('Kwicks options minSize and maxSize may not both be set');
 			if (o.behavior && o.behavior !== 'menu' && o.behavior !== 'slideshow')
 				throw new Error('Unrecognized Kwicks behavior specified: ' + o.behavior);
-			$.each(['minSize', 'maxSize'], function(i, prop) {
+			$.each(['minSize', 'maxSize', 'spacing'], function(i, prop) {
 				var val = o[prop];
 				switch (typeof val) {
 					case 'number':
@@ -45,7 +53,7 @@
 							o[prop] = +val.slice(0, -1) / 100;
 						} else if (val.slice(-2) === 'px') {
 							o[prop + 'Units'] = 'px';
-							o[prop] = +val.slice(0, -2);	
+							o[prop] = +val.slice(0, -2);
 						} else {
 							throw new Error('Invalid value for Kwicks option ' + prop + ': ' + val);
 						}
@@ -59,82 +67,120 @@
 				$(this).data('kwicks', new Kwick(this, o));
 			});
 		},
-		expand: function(index) {
+		expand: function(index, opts) {
+			if (typeof index === 'object') {
+				opts = index;
+				index = undefined;
+			}
+
+			var delay = opts && opts.delay || 0;
+			
 			return this.each(function() {
 				var $this = $(this),
-					$panel;
+					kwick = $this.data('kwicks');
 
-				// if this is a container, then we require a panel index
-				if ($this.is('.kwicks-processed')) {
-					if (typeof index !== 'number')
-						throw new Error('Kwicks method "expand" requires an index');
-					// protect against jquery's eq(-index) feature
-					if (index >= 0) $panel = $this.children().eq(index);
+				// assume this is the container
+				if (kwick) {
+					index = typeof index === 'number' ? index : -1;
 				}
-				// otherwise `this` should be a panel already
-				else if ($this.parent().is('.kwicks-processed')) {
-					// don't need panel in this scenario
-					$panel = $this;
-					index = $panel.index();
-				}
-				// if it's not a container or a panel, then this was an erroneous method call
-				else {
-					throw new Error('Cannot call "expand" method on a non-Kwicks element');
+				// otherwise, assume we have a panel
+				else if (kwick = $this.parent().data('kwicks')) {
+					index = $this.index();
+				} else {
+					return;
 				}
 
-				// try to trigger on panel, but default to container if panel doesn't exist
-				var $target = ($panel && $panel.length) ? $panel : $this;
-				$target.trigger('expand.kwicks', { index: index });				
+				var expand = function() {
+					// bail out if the panel is already expanded
+					if (index === kwick.expandedIndex) return;
+
+					var $panels = kwick.$panels,
+						expanded = $panels[index] || null;
+
+					kwick.$container.trigger('expand.kwicks', {
+						index: index,
+						expanded: expanded,
+						collapsed: $panels.not(expanded).get(),
+						oldIndex: kwick.expandedIndex,
+						oldExpanded: kwick.getExpandedPanel(),
+						isAnimated: kwick.isAnimated
+					});
+				};
+
+				var timeoutId = kwick.$container.data('kwicks-timeout-id');
+				if (timeoutId) {
+					kwick.$container.removeData('kwicks-timeout-id');
+					clearTimeout(timeoutId);
+				}
+				if (delay > 0) {
+					kwick.$container.data('kwicks-timeout-id', setTimeout(expand, delay));
+				} else {
+					expand();
+				}
 			});
 		},
 		expanded: function() {
 			var kwick = this.first().data('kwicks');
-			if (!kwick) throw new Error('Cannot called "expanded" method on a non-Kwicks element');
+			if (!kwick) return;
 			return kwick.expandedIndex;
 		},
 		select: function(index) {
 			return this.each(function() {
 				var $this = $(this),
-					$panel;
-
-				// if this is a container, then we require a panel index
-				if ($this.is('.kwicks-processed')) {
-					if (typeof index !== 'number')
-						throw new Error('Kwicks method "select" requires an index');
-					// protect against jquery's eq(-index) feature
-					if (index >= 0) $panel = $this.children().eq(index);
+					kwick = $this.data('kwicks');
+				
+				// assume this is the container
+				if (kwick) {
+					index = typeof index === 'number' ? index : -1;
 				}
-				// otherwise `this` should be a panel already
-				else if ($this.parent().is('.kwicks-processed')) {
-					// don't need panel in this scenario
-					$panel = $this;
-					index = $panel.index();
-				}
-				// if it's not a container or a panel, then this was an erroneous method call
-				else {
-					throw new Error('Cannot call "expand" method on a non-Kwicks element');
+				// otherwise, assume we have a panel
+				else if (kwick = $this.parent().data('kwicks')) {
+					index = $this.index();
+				} else {
+					return;
 				}
 
-				// try to trigger on panel, but default to container if panel doesn't exist
-				var $target = ($panel && $panel.length) ? $panel : $this;
-				$target.trigger('select.kwicks', { index: index });				
+				// don't trigger event if its already selected
+				if (index !== kwick.selectedIndex) {
+					var $panels = kwick.$panels,
+						selected = $panels[index] || null;
+
+					kwick.$container.trigger('select.kwicks', {
+						index: index,
+						selected: selected,
+						unselected: $panels.not(selected).get(),
+						oldIndex: kwick.selectedIndex,
+						oldSelected: kwick.getSelectedPanel()
+					});
+				}
+
+				// call expand
+				kwick.$container.kwicks('expand', index);
 			});
 		},
 		selected: function() {
 			var kwick = this.first().data('kwicks');
-			if (!kwick) throw new Error('Cannot called "selected" method on a non-Kwicks element');
+			if (!kwick) return;
 			return kwick.selectedIndex;
 		},
-		resize: function(index) {
+		resize: function() {
 			return this.each(function() {
 				var $this = $(this),
 					kwick = $this.data('kwicks');
 
-				if (!kwick) {
-					throw new Error('Cannot called "resize" method on a non-Kwicks element');
-				}
+				if (!kwick) return;
 
-				kwick.resize();			
+				kwick.resize();
+			});
+		},
+		destroy: function() {
+			return this.each(function() {
+				var $this = $(this),
+					kwick = $this.data('kwicks');
+
+				if (!kwick) return;
+
+				kwick.destroy();
 			});
 		}
 	};
@@ -158,11 +204,8 @@
 	$.event.special.expand = {
 		_default: function(e, data) {
 			if (e.namespace !== 'kwicks') return;
-			var $el = $(e.target);
-			var kwick = $el.data('kwicks') || $el.parent().data('kwicks');
-			// should we throw here?
-			if (!kwick) return;
-			kwick.expand(data.index);
+			var kwick = $(e.target).data('kwicks');
+			if (kwick) kwick.expand(data.index);
 		}
 	};
 
@@ -172,11 +215,8 @@
 	$.event.special.select = {
 		_default: function(e, data) {
 			if (e.namespace !== 'kwicks') return;
-			var $el = $(e.target);
-			var kwick = $el.data('kwicks') || $el.parent().data('kwicks');
-			// should we throw here?
-			if (!kwick) return;
-			kwick.select(data.index);
+			var kwick = $(e.target).data('kwicks');
+			if (kwick) kwick.select(data.index);
 		}
 	};
 
@@ -184,12 +224,28 @@
 	 *  Instantiates a new Kwick instance using the provided container and options.
 	 */
 	var Kwick = function Kwick(container, opts) {
+		var self = this;
+
 		this.opts = opts;
+
+		// an array of callbacks to invoke if 'destroy' is invoked
+		this.onDestroyHandlers = [];
 
 		// references to our DOM elements
 		var orientation = opts.isVertical ? 'vertical' : 'horizontal';
-		this.$container = $(container).addClass('kwicks').addClass('kwicks-' + orientation);
+		this.$container = $(container);
 		this.$panels = this.$container.children();
+
+		// semi-smart add/remove around container classes so that we don't bork
+		// the styling if/when destroy is called
+		var containerClasses = ['kwicks', 'kwicks-' + orientation];
+		$.each(containerClasses, function(className) {
+			if (self.$container.hasClass(className)) return;
+			self.$container.addClass(className);
+			self.onDestroy(function() {
+				self.$container.removeClass(className);
+			});
+		});
 
 		// zero-based, -1 for "none"
 		this.selectedIndex = this.$panels.filter('.kwicks-selected').index();
@@ -209,28 +265,38 @@
 		this.secondaryAlignment = opts.isVertical ? 'bottom' : 'right';
 
 		// object for creating a "master" animation loop for all panel animations
-		this.$timer = $({ progress : 0 });
+		this.$timer = $({ progress: 0 });
+
+		// keeps track of whether or not an animation is in progress
+		this.isAnimated = false;
 
 		// the current offsets for each panel
 		this.offsets = this.getOffsetsForExpanded();
 
-		this.initStyles();
+		this.updatePanelStyles();
 		this.initBehavior();
 		this.initWindowResizeHandler();
-		this.initSlideShow();
 	};
 
 	/**
-	 * Calculates size, minSize, and maxSize based on the current size of the container and the
-	 * user-provided options.  The results will be stored on this.panelSize, this.panelMinSize, and
-	 * this.panelMaxSize.  This should be run on initialization and whenever the container's
-	 * primary dimension may have changed in size.
+	 * Calculates size, minSize, maxSize, and spacing based on the current size of the container and
+	 * the user-provided options.  The results will be stored on this.panelSize, this.panelMinSize,
+	 * this.panelMaxSize, and this.panelSpacing.  This should be run on initialization and whenever
+	 * the container's primary dimension may have changed in size.
 	 */
 	Kwick.prototype.calculatePanelSizes = function() {
 		var opts = this.opts,
-			numPanels = this.$panels.length,
-			containerSize = this.getContainerSize(true),
-			sumSpacing = opts.spacing * (numPanels - 1),
+			containerSize = this.getContainerSize(true);
+
+		// calculate spacing first
+		if (opts.spacingUnits === '%') {
+			this.panelSpacing = containerSize * opts.spacing;
+		} else {
+			this.panelSpacing = opts.spacing;
+		}
+
+		var numPanels = this.$panels.length,
+			sumSpacing = this.panelSpacing * (numPanels - 1),
 			sumPanelSize = containerSize - sumSpacing;
 
 		this.panelSize = sumPanelSize / numPanels;
@@ -271,7 +337,7 @@
 		// todo: cache the offset values
 		var expandedIndex = this.expandedIndex,
 			numPanels = this.$panels.length,
-			spacing = this.opts.spacing,
+			spacing = this.panelSpacing,
 			size = this.panelSize,
 			minSize = this.panelMinSize,
 			maxSize = this.panelMaxSize;
@@ -320,7 +386,7 @@
 			pDim = this.primaryDimension,
 			pAlign = this.primaryAlignment,
 			sAlign = this.secondaryAlignment,
-			spacing = this.opts.spacing,
+			spacing = this.panelSpacing,
 			containerSize = this.getContainerSize();
 
 		// the kwicks-processed class ensures that panels are absolutely positioned, but on our
@@ -352,45 +418,86 @@
 	};
 
 	/**
-	 *  Sets initial styles on the container element and panels
-	 */
-	Kwick.prototype.initStyles = function() {
-		var opts = this.opts,
-			$container = this.$container,
-			$panels = this.$panels,
-			numPanels = $panels.length,
-			pDim = this.primaryDimension,
-			sDim = this.secondaryDimension;
-
-		this.updatePanelStyles();
-	};
-
-	/**
 	 *  Assuming for a moment that out-of-the-box behaviors aren't a horrible idea, this method
 	 *  encapsulates the initialization logic thereof.
 	 */
 	Kwick.prototype.initBehavior = function() {
 		if (!this.opts.behavior) return;
 
-		var $container = this.$container;
 		switch (this.opts.behavior) {
 			case 'menu':
-				this.$container.on('mouseleave', function() {
-					$container.kwicks('expand', -1);
-				}).children().on('mouseover', function() {
-					$(this).kwicks('expand');
-				}).click(function() {
-					$(this).kwicks('select');
-				});
+				this.initMenuBehavior();
 				break;
 			case 'slideshow':
-				this.$panels.click(function(){
-					$(this).kwicks('select');
-				});
+				this.initSlideshowBehavior();
 				break;
 			default:
 				throw new Error('Unrecognized behavior option: ' + this.opts.behavior);
 		}
+	};
+
+	/**
+	 * Initializes the menu behavior.
+	 */
+	Kwick.prototype.initMenuBehavior = function() {
+		var self = this,
+			opts = self.opts;
+
+		this.addEventHandler(this.$container, 'mouseleave', function() {
+			self.$container.kwicks('expand', -1, { delay: opts.delayMouseOut });
+		});
+
+		this.addEventHandler(this.$panels, 'mouseenter', function() {
+			$(this).kwicks('expand', { delay: opts.delayMouseIn });
+		});
+
+		if (!opts.selectOnClick && !opts.deselectOnClick) return;
+
+		this.addEventHandler(this.$panels, 'click', function() {
+			var $this = $(this),
+				isSelected = $this.hasClass('kwicks-selected');
+
+			if (isSelected && opts.deselectOnClick) {
+				$this.parent().kwicks('select', -1);
+			} else if (!isSelected && opts.selectOnClick) {
+				$this.kwicks('select');
+			}
+		});
+	};
+
+	/**
+	 * Initializes the slideshow behavior.
+	 */
+	Kwick.prototype.initSlideshowBehavior = function() {
+		var self = this,
+			numSlides = this.$panels.length,
+			curSlide = 0,
+			// flag to handle weird corner cases
+			running = false,
+			intervalId;
+
+		var start = function() {
+			if (running) return;
+			intervalId = setInterval(function() {
+				self.$container.kwicks('expand', ++curSlide % numSlides);
+			}, self.opts.interval);
+			running = true;
+		};
+		var pause = function() {
+			clearInterval(intervalId);
+			running = false;
+		};
+
+		start();
+		this.onDestroy(pause);
+
+		if (!this.opts.interactive) return;
+
+		this.addEventHandler(this.$container, 'mouseenter', pause);
+		this.addEventHandler(this.$container, 'mouseleave', start);
+		this.addEventHandler(this.$panels, 'mouseenter', function() {
+			curSlide = $(this).kwicks('expand').index();
+		});
 	};
 
 	/**
@@ -402,7 +509,8 @@
 
 		var self = this,
 			prevTime = 0,
-			execScheduled = false;
+			execScheduled = false,
+			$window = $(window);
 
 		var onResize = function(e) {
 			// if there's no event, then this is a scheduled from our setTimeout
@@ -420,29 +528,10 @@
 
 			// throttle rate is satisfied, go ahead and run
 			prevTime = now;
-			self.resize();			
-		}
-		$(window).on('resize', onResize);
-	};
+			self.resize();
+		};
 
-	/**
-	 * Initialize Slide Show behavior
-	 */
-	Kwick.prototype.initSlideShow = function() {
-		if (!this.opts.showSpeed || this.opts.behavior !== "slideshow") return;
-		if (isNaN(this.opts.showSpeed)) {
-			throw new Error('Invalid slideShow option (not a number): ' + this.opts.slideShow);
-		}
-
-		var self = this,
-			speed = parseInt(this.opts.showSpeed)*1000,
-			numSlides = this.$panels.length,
-			curSlide = 0;
-
-		clearInterval(this.slideShowInterval);
-		this.slideShowInterval = setInterval(function(){
-			self.expand(curSlide++ % numSlides);
-		},speed);
+		this.addEventHandler($window, 'resize', onResize);
 	};
 
 	/**
@@ -462,27 +551,76 @@
 	 *  Gets a reference to the currently expanded panel (if there is one)
 	 */
 	Kwick.prototype.getExpandedPanel = function() {
-		return this.expandedIndex === -1 ? $([]) : this.$panels.eq(this.expandedIndex);
+		return this.$panels[this.expandedIndex] || null;
 	};
 
 	/**
-	 *  Gets a reference to the currently collapsed panels (if there is any)
+	 *  Gets a reference to the currently collapsed panels
 	 */
 	Kwick.prototype.getCollapsedPanels = function() {
-		return this.expandedIndex === -1 ? $([]) : this.$panels.not(this.getExpandedPanel());
+		if (this.expandedIndex === -1) return [];
+		return this.$panels.not(this.getExpandedPanel()).get();
 	};
 
 	/**
 	 *  Gets a reference to the currently selected panel (if there is one)
 	 */
 	Kwick.prototype.getSelectedPanel = function() {
-		return this.selectedIndex === -1 ? $([]) : this.$panels.eq(this.selectedIndex);
+		return this.$panels[this.selectedIndex] || null;
+	};
+
+	/**
+	 * Gets a reference to the currently unselected panels
+	 */
+	Kwick.prototype.getUnselectedPanels = function() {
+		return this.$panels.not(this.getSelectedPanel()).get();
+	};
+
+	/**
+	 * Registers a handler to be invoked if/when 'destroy' is invoked
+	 */
+	Kwick.prototype.onDestroy = function(handler) {
+		this.onDestroyHandlers.push(handler);
+	};
+
+	/**
+	 * Adds an event handler and automatically registers it to be removed if/when
+	 * the plugin is destroyed.
+	 */
+	Kwick.prototype.addEventHandler = function($el, eventName, handler) {
+		$el.on(eventName, handler);
+		this.onDestroy(function() {
+			$el.off(eventName, handler);
+		});
+	};
+
+	/**
+	 * "Destroys" this Kwicks instance plugin by performing the following:
+	 * 1) Stops any currently running animations
+	 * 2) Invokes all destroy handlers
+	 * 3) Clears out all style attributes on panels
+	 * 4) Removes all kwicks class names from panels and container
+	 * 5) Removes the 'kwicks' data value from the container
+	 */
+	Kwick.prototype.destroy = function() {
+		this.$timer.stop();
+		for (var i = 0, len = this.onDestroyHandlers.length; i < len; i++) {
+			this.onDestroyHandlers[i]();
+		}
+		this.$panels
+			.attr('style', '')
+			.removeClass('kwicks-expanded kwicks-selected kwicks-collapsed');
+		this.$container
+			// note: kwicks and kwicks-<orientation> classes have extra smarts around them
+			// back in the constructor
+			.removeClass('kwicks-processed')
+			.removeData('kwicks');
 	};
 
 	/**
 	 *  Forces the panels to be updated in response to the container being resized.
 	 */
-	Kwick.prototype.resize = function(index) {
+	Kwick.prototype.resize = function() {
 		// bail out if container size hasn't changed
 		if (this.getContainerSize() === this.getContainerSize(true)) return;
 
@@ -500,27 +638,25 @@
 	};
 
 	/**
-	 *  Selects (and expands) the panel with the specified index (use -1 to select none)
+	 *  Selects the panel with the specified index (use -1 to select none)
 	 */
 	Kwick.prototype.select = function(index) {
 		// make sure the panel isn't already selected
-		if (index === this.selectedIndex) {
-			// it's possible through the API to have a panel already selected but not expanded,
-			// so ensure that the panel really is expanded
-			return this.expand(index);
-		}
+		if (index === this.selectedIndex) return;
 
-		this.getSelectedPanel().removeClass('kwicks-selected');
+		$(this.getSelectedPanel()).removeClass('kwicks-selected');
 		this.selectedIndex = index;
-		this.getSelectedPanel().addClass('kwicks-selected');
-		this.expand(index);
+		$(this.getSelectedPanel()).addClass('kwicks-selected');
 	};
 
 	/**
 	 *  Expands the panel with the specified index (use -1 to expand none)
 	 */
 	Kwick.prototype.expand = function(index) {
-		var self = this;
+		var self = this,
+			// used for expand-complete event later on
+			oldIndex = this.expandedIndex,
+			oldExpanded = this.getExpandedPanel();
 
 		// if the index is -1, then default it to the currently selected index (which will also be
 		// -1 if no panels are currently selected)
@@ -529,11 +665,11 @@
 		// make sure the panel isn't already expanded
 		if (index === this.expandedIndex) return;
 
-		this.getExpandedPanel().removeClass('kwicks-expanded');
-		this.getCollapsedPanels().removeClass('kwicks-collapsed');
+		$(this.getExpandedPanel()).removeClass('kwicks-expanded');
+		$(this.getCollapsedPanels()).removeClass('kwicks-collapsed');
 		this.expandedIndex = index;
-		this.getExpandedPanel().addClass('kwicks-expanded');
-		this.getCollapsedPanels().addClass('kwicks-collapsed');
+		$(this.getExpandedPanel()).addClass('kwicks-expanded');
+		$(this.getCollapsedPanels()).addClass('kwicks-collapsed');
 
 		// handle panel animation
 		var $timer = this.$timer,
@@ -548,6 +684,7 @@
 			duration: this.opts.duration,
 			easing: this.opts.easing,
 			step: function(progress) {
+				// check if we've resized mid-animation (yes, we're thorough)
 				if (self._dirtyOffsets) {
 					offsets = self.offsets;
 					targetOffsets = self.getOffsetsForExpanded();
@@ -563,6 +700,15 @@
 			},
 			complete:  function() {
 				self.isAnimated = false;
+				self.$container.trigger('expand-complete.kwicks', {
+					index: index,
+					expanded: self.getExpandedPanel(),
+					collapsed: self.getCollapsedPanels(),
+					oldIndex: oldIndex,
+					oldExpanded: oldExpanded,
+					// note: this will always be false but is included to match expand event
+					isAnimated: false
+				});
 			}
 		});
 	};
