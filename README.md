@@ -1,4 +1,7 @@
 # Kwicks for RubyOnRails
+
+[![Gem Version](https://badge.fury.io/rb/jquery_kwicks_rails.svg)](http://badge.fury.io/rb/jquery_kwicks_rails)
+
 A *Rails* plugin for having <b>Sexy Sliding Panels</b> on your application. 
 
 ## Installation
